@@ -84,6 +84,8 @@ Follow on reads can also be automatically paired if an alignment summary file is
 $ bonito duplex dna_r9.4.1 /data/reads --summary sequencing_summary.txt --reference ref.mmi > basecalls.sam
 ```
 
+The `--max-cpus` argument can be used to limit the number of CPUs the `duplex` process should use. When running on a slurm GPU cluster, the apparent memory usage shot up to ~80GB during the model loading and initial startup phase (first 30 seconds of job being run), but then can be reduced to less than 32GB by limiting the number of CPUs to 4.
+
 ## Interface
 
  - `bonito view` - view a model architecture for a given `.toml` file and the number of parameters in the network.
