@@ -1,6 +1,6 @@
 # Bonito
 
-[![PyPI version](https://badge.fury.io/py/ont-bonito.svg)](https://badge.fury.io/py/ont-bonito)
+[![GitHub version](https://badge.fury.io/gh/scottdbrown%2Fbonito.svg)](https://badge.fury.io/gh/scottdbrown%2Fbonito)
 
 A PyTorch Basecaller for Oxford Nanopore Reads.
 
