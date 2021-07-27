@@ -28,6 +28,29 @@ $ source venv3/bin/activate
 (venv3) $ bonito download --models --latest
 ```
 
+## Installation using CUDA v11
+
+Modified from @jdemule https://github.com/nanoporetech/bonito/issues/153#issuecomment-848085336
+
+```bash
+$ git clone https://github.com/scottdbrown/bonito.git
+$ git clone https://github.com/davidcpage/seqdist.git
+$ vim seqdist/settings.ini
+	## -- MODIFY --
+	requirements = torch>=1.1.0 numpy<=1.18.5 cupy-cuda102
+	## --   to   --
+	requirements = torch>=1.1.0 numpy<=1.18.5 cupy-cuda111
+	
+$ python3 -m venv bonito_venv
+$ source bonito_venv/bin/activate
+$ pip install --upgrade pip
+$ pip install torch==1.8.1+cu111 -f https://download.pytorch.org/whl/torch_stable.html
+$ pip install ./seqdist/
+$ cd bonito
+$ pip install -r requirements.txt
+$ python setup.py develop
+```
+
 ## Models
 
 The following pretrained models are available to download with `bonito download`.

@@ -12,5 +12,5 @@ requests==2.25.1
 crf-beam==0.0.1a0
 ont-fast5-api==3.3.0
 fast-ctc-decode==0.3.0
-cupy-cuda102==8.6.0
-genomeworks-cuda-10-2==2021.2.2
+cupy-cuda111==8.6.0
+genomeworks-cuda-11-1==2021.2.2
