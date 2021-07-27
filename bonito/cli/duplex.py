@@ -294,16 +294,16 @@ def poa(seqs, allseq=False):
     return (con, )
 
 
-def call(model, reads_directory, templates, complements, aligner=None, cudapoa=True):
+def call(model, reads_directory, templates, complements, aligner=None, cudapoa=True, max_cpus=1):
 
-    temp_reads = read_gen(reads_directory, templates, n_proc=8, cancel=process_cancel())
-    comp_reads = read_gen(reads_directory, complements, n_proc=8, cancel=process_cancel())
+    temp_reads = read_gen(reads_directory, templates, n_proc=int(min(max_cpus/2, 8)), cancel=process_cancel())
+    comp_reads = read_gen(reads_directory, complements, n_proc=int(min(max_cpus/2, 8)), cancel=process_cancel())
 
     temp_scores = basecall(model, temp_reads, reverse=False)
     comp_scores = basecall(model, comp_reads, reverse=True)
 
     scores = (((r1, r2), (s1, s2)) for (r1, s1), (r2, s2) in zip(temp_scores, comp_scores))
-    calls = thread_map(decode, scores, n_thread=12)
+    calls = thread_map(decode, scores, n_thread=min(max_cpus, 8))
 
     if cudapoa:
         sequences = ((reads, [seqs, ]) for reads, seqs in calls if len(seqs) > 2)
@@ -311,7 +311,7 @@ def call(model, reads_directory, templates, complements, aligner=None, cudapoa=T
         res = ((reads[0], {'sequence': seq}) for seqs in consensus for reads, seq in seqs)
     else:
         sequences = ((reads, seqs) for reads, seqs in calls if len(seqs) > 2)
-        consensus = process_map(poa, sequences, n_proc=4)
+        consensus = process_map(poa, sequences, n_proc=min(max_cpus, 4))
         res = ((reads, {'sequence': seq}) for reads, seqs in consensus for seq in seqs)
 
     if aligner is None: return res
@@ -359,7 +359,7 @@ def main(args):
         else:
             sys.stderr.write("> building read index\n")
             files = list(glob(os.path.join(args.reads_directory, '*.fast5')))
-            index = build_index(files, n_proc=8)
+            index = build_index(files, n_proc=min(args.max_cpus, 8))
             if args.save_index:
                 with open('bonito-read-id.idx', 'w') as f:
                     json.dump(index, f)
@@ -385,7 +385,7 @@ def main(args):
     # https://github.com/clara-parabricks/GenomeWorks/issues/648
     with devnull(): CudaPoaBatch(1000, 1000, 3724032)
 
-    basecalls = call(model, args.reads_directory, temp_reads, comp_reads, aligner=aligner)
+    basecalls = call(model, args.reads_directory, temp_reads, comp_reads, aligner=aligner, max_cpus=args.max_cpus)
     writer = Writer(tqdm(basecalls, desc="> calling", unit=" reads", leave=False), aligner, duplex=True)
 
     t0 = perf_counter()
@@ -414,4 +414,5 @@ def argparser():
     parser.add_argument("--reference")
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--max-reads", default=0, type=int)
+    parser.add_argument("--max-cpus", default=1, type=int)
     return parser
