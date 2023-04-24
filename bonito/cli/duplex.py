@@ -407,6 +407,7 @@ def main(args):
     with devnull(): CudaPoaBatch(1000, 1000, 3724032)
 
     print("Start basecalling...", file=sys.stderr)
+    start_time = time.time()
     basecalls = call(model, args.reads_directory, temp_reads, comp_reads, aligner=aligner, max_cpus=args.max_cpus)
     writer = Writer(tqdm(basecalls, desc="> calling", unit=" reads", leave=False), aligner, duplex=True)
 
@@ -415,7 +416,8 @@ def main(args):
     writer.join()
     duration = perf_counter() - t0
     num_samples = sum(num_samples for read_id, num_samples in writer.log)
-    print("Basecalling successfully finished.", file=sys.stderr)
+    execution_time = time.time() - start_time
+    print(f"Basecalling successfully finished in: {execution_time:.6f} seconds", file=sys.stderr)
 
     print("> duration: %s" % timedelta(seconds=np.round(duration)), file=sys.stderr)
     print("> samples per second %.1E" % (num_samples / duration), file=sys.stderr)
