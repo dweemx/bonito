@@ -132,13 +132,13 @@ def build_index(files, n_proc=1):
     index = {}
     
     start_time = time.time()
-    print(f"Starting building index...")
+    print(f"Starting building index...", file=sys.stderr)
     with ProcessPoolExecutor(max_workers=n_proc) as pool:
         for res in tqdm(pool.map(get_read_ids, files), leave=False):
             index.update(res)
         
     execution_time = time.time() - start_time
-    print(f"Index successfully built in: {execution_time:.6f} seconds")
+    print(f"Index successfully built in: {execution_time:.6f} seconds", file=sys.stderr)
     return index
 
 
@@ -303,27 +303,27 @@ def poa(seqs, allseq=False):
 
 def call(model, reads_directory, templates, complements, aligner=None, cudapoa=True, max_cpus=1):
 
-    print("[call] Start generating reads from the given `directory` listed in the `summary` dataframe. ")
+    print("[call] Start generating reads from the given `directory` listed in the `summary` dataframe.", file=sys.stderr)
     temp_reads = read_gen(reads_directory, templates, n_proc=int(min(max_cpus/2, 8)), cancel=process_cancel())
     comp_reads = read_gen(reads_directory, complements, n_proc=int(min(max_cpus/2, 8)), cancel=process_cancel())
-    print("[call] Done. ")
+    print("[call] Done.", file=sys.stderr)
 
-    print("[call] Start basecalling reads... ")
+    print("[call] Start basecalling reads... ", file=sys.stderr)
     temp_scores = basecall(model, temp_reads, reverse=False)
     comp_scores = basecall(model, comp_reads, reverse=True)
-    print("[call] Done.")
+    print("[call] Done.", file=sys.stderr)
 
     scores = (((r1, r2), (s1, s2)) for (r1, s1), (r2, s2) in zip(temp_scores, comp_scores))
-    print("[call] Start decoding...")
+    print("[call] Start decoding...", file=sys.stderr)
     calls = thread_map(decode, scores, n_thread=min(max_cpus, 8))
-    print("[call] Done.")
+    print("[call] Done.", file=sys.stderr)
 
     if cudapoa:
-        print("[call] Starting poagen...")
+        print("[call] Starting poagen...", file=sys.stderr)
         sequences = ((reads, [seqs, ]) for reads, seqs in calls if len(seqs) > 2)
         consensus = (zip(reads, poagen(calls)) for reads, calls in batchify(sequences, 100))
         res = ((reads[0], {'sequence': seq}) for seqs in consensus for reads, seq in seqs)
-        print("[call] Done.")
+        print("[call] Done.", file=sys.stderr)
     else:
         print("[call] Starting poa...")
         sequences = ((reads, seqs) for reads, seqs in calls if len(seqs) > 2)
@@ -381,10 +381,10 @@ def main(args):
                 with open('bonito-read-id.idx', 'w') as f:
                     json.dump(index, f)
 
-        print("Start reading pairs...")
+        print("Start reading pairs...", file=sys.stderr)
         pairs = pd.read_csv(args.pairs, sep=args.sep, names=['read_1', 'read_2'])
         if args.max_reads > 0: pairs = pairs.head(args.max_reads)
-        print("Pairs successfull read!")
+        print("Pairs successfull read!", file=sys.stderr)
 
         pairs['file_1'] = pairs['read_1'].apply(index.get)
         pairs['file_2'] = pairs['read_2'].apply(index.get)
@@ -401,12 +401,12 @@ def main(args):
         print("> no matched pairs found in given directory", file=sys.stderr)
         exit(1)
     else:
-        print(f"Number of pairs detected: {pairs.shape[0]}")
+        print(f"Number of pairs detected: {pairs.shape[0]}", file=sys.stderr)
 
     # https://github.com/clara-parabricks/GenomeWorks/issues/648
     with devnull(): CudaPoaBatch(1000, 1000, 3724032)
 
-    print("Start basecalling...")
+    print("Start basecalling...", file=sys.stderr)
     basecalls = call(model, args.reads_directory, temp_reads, comp_reads, aligner=aligner, max_cpus=args.max_cpus)
     writer = Writer(tqdm(basecalls, desc="> calling", unit=" reads", leave=False), aligner, duplex=True)
 
@@ -415,7 +415,7 @@ def main(args):
     writer.join()
     duration = perf_counter() - t0
     num_samples = sum(num_samples for read_id, num_samples in writer.log)
-    print("Basecalling successfully finished.")
+    print("Basecalling successfully finished.", file=sys.stderr)
 
     print("> duration: %s" % timedelta(seconds=np.round(duration)), file=sys.stderr)
     print("> samples per second %.1E" % (num_samples / duration), file=sys.stderr)
