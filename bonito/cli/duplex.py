@@ -4,6 +4,7 @@ Bonito Duplex consensus decoding.
 https://www.biorxiv.org/content/10.1101/2020.02.25.956771v1
 """
 
+import time
 import os
 import sys
 import json
@@ -129,9 +130,15 @@ def build_index(files, n_proc=1):
     Build an index of read ids to filename mappings
     """
     index = {}
+    
+    start_time = time.time()
+    print(f"Starting building index...")
     with ProcessPoolExecutor(max_workers=n_proc) as pool:
         for res in tqdm(pool.map(get_read_ids, files), leave=False):
             index.update(res)
+        
+    execution_time = time.time() - start_time
+    print(f"Index successfully built in: {execution_time:.6f} seconds")
     return index
 
 
@@ -296,23 +303,33 @@ def poa(seqs, allseq=False):
 
 def call(model, reads_directory, templates, complements, aligner=None, cudapoa=True, max_cpus=1):
 
+    print("[call] Start generating reads from the given `directory` listed in the `summary` dataframe. ")
     temp_reads = read_gen(reads_directory, templates, n_proc=int(min(max_cpus/2, 8)), cancel=process_cancel())
     comp_reads = read_gen(reads_directory, complements, n_proc=int(min(max_cpus/2, 8)), cancel=process_cancel())
+    print("[call] Done. ")
 
+    print("[call] Start basecalling reads... ")
     temp_scores = basecall(model, temp_reads, reverse=False)
     comp_scores = basecall(model, comp_reads, reverse=True)
+    print("[call] Done.")
 
     scores = (((r1, r2), (s1, s2)) for (r1, s1), (r2, s2) in zip(temp_scores, comp_scores))
+    print("[call] Start decoding...")
     calls = thread_map(decode, scores, n_thread=min(max_cpus, 8))
+    print("[call] Done.")
 
     if cudapoa:
+        print("[call] Starting poagen...")
         sequences = ((reads, [seqs, ]) for reads, seqs in calls if len(seqs) > 2)
         consensus = (zip(reads, poagen(calls)) for reads, calls in batchify(sequences, 100))
         res = ((reads[0], {'sequence': seq}) for seqs in consensus for reads, seq in seqs)
+        print("[call] Done.")
     else:
+        print("[call] Starting poa...")
         sequences = ((reads, seqs) for reads, seqs in calls if len(seqs) > 2)
         consensus = process_map(poa, sequences, n_proc=min(max_cpus, 4))
         res = ((reads, {'sequence': seq}) for reads, seqs in consensus for seq in seqs)
+        print("[call] Done.")
 
     if aligner is None: return res
     return align_map(aligner, res)
@@ -364,8 +381,10 @@ def main(args):
                 with open('bonito-read-id.idx', 'w') as f:
                     json.dump(index, f)
 
+        print("Start reading pairs...")
         pairs = pd.read_csv(args.pairs, sep=args.sep, names=['read_1', 'read_2'])
         if args.max_reads > 0: pairs = pairs.head(args.max_reads)
+        print("Pairs successfull read!")
 
         pairs['file_1'] = pairs['read_1'].apply(index.get)
         pairs['file_2'] = pairs['read_2'].apply(index.get)
@@ -381,10 +400,13 @@ def main(args):
     if len(pairs) == 0:
         print("> no matched pairs found in given directory", file=sys.stderr)
         exit(1)
+    else:
+        print(f"Number of pairs detected: {pairs.shape[0]}")
 
     # https://github.com/clara-parabricks/GenomeWorks/issues/648
     with devnull(): CudaPoaBatch(1000, 1000, 3724032)
 
+    print("Start basecalling...")
     basecalls = call(model, args.reads_directory, temp_reads, comp_reads, aligner=aligner, max_cpus=args.max_cpus)
     writer = Writer(tqdm(basecalls, desc="> calling", unit=" reads", leave=False), aligner, duplex=True)
 
@@ -393,6 +415,7 @@ def main(args):
     writer.join()
     duration = perf_counter() - t0
     num_samples = sum(num_samples for read_id, num_samples in writer.log)
+    print("Basecalling successfully finished.")
 
     print("> duration: %s" % timedelta(seconds=np.round(duration)), file=sys.stderr)
     print("> samples per second %.1E" % (num_samples / duration), file=sys.stderr)
@@ -411,6 +434,7 @@ def argparser():
     parser.add_argument("--sep", default=' ')
     parser.add_argument("--index", default=None)
     parser.add_argument("--save-index", action="store_true", default=False)
+    parser.add_argument("--debug", action="store_true", default=False)
     parser.add_argument("--reference")
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--max-reads", default=0, type=int)
