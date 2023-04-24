@@ -132,13 +132,13 @@ def build_index(files, n_proc=1):
     index = {}
     
     start_time = time.time()
-    print(f"Starting building index...", file=sys.stderr)
+    print(f"> starting building index...", file=sys.stderr)
     with ProcessPoolExecutor(max_workers=n_proc) as pool:
         for res in tqdm(pool.map(get_read_ids, files), leave=False):
             index.update(res)
         
     execution_time = time.time() - start_time
-    print(f"Index successfully built in: {execution_time:.6f} seconds", file=sys.stderr)
+    print(f"> index successfully built in: {execution_time:.6f} seconds", file=sys.stderr)
     return index
 
 
@@ -303,33 +303,33 @@ def poa(seqs, allseq=False):
 
 def call(model, reads_directory, templates, complements, aligner=None, cudapoa=True, max_cpus=1):
 
-    print("[call] Start generating reads from the given `directory` listed in the `summary` dataframe.", file=sys.stderr)
+    print("> start generating reads from the given `directory` listed in the `summary` dataframe.", file=sys.stderr)
     temp_reads = read_gen(reads_directory, templates, n_proc=int(min(max_cpus/2, 8)), cancel=process_cancel())
     comp_reads = read_gen(reads_directory, complements, n_proc=int(min(max_cpus/2, 8)), cancel=process_cancel())
-    print("[call] Done.", file=sys.stderr)
+    print("> done.", file=sys.stderr)
 
-    print("[call] Start basecalling reads... ", file=sys.stderr)
+    print("> start basecalling reads... ", file=sys.stderr)
     temp_scores = basecall(model, temp_reads, reverse=False)
     comp_scores = basecall(model, comp_reads, reverse=True)
-    print("[call] Done.", file=sys.stderr)
+    print("> done.", file=sys.stderr)
 
     scores = (((r1, r2), (s1, s2)) for (r1, s1), (r2, s2) in zip(temp_scores, comp_scores))
-    print("[call] Start decoding...", file=sys.stderr)
+    print("> start decoding...", file=sys.stderr)
     calls = thread_map(decode, scores, n_thread=min(max_cpus, 8))
-    print("[call] Done.", file=sys.stderr)
+    print("> done.", file=sys.stderr)
 
     if cudapoa:
-        print("[call] Starting poagen...", file=sys.stderr)
+        print("> start running poagen...", file=sys.stderr)
         sequences = ((reads, [seqs, ]) for reads, seqs in calls if len(seqs) > 2)
         consensus = (zip(reads, poagen(calls)) for reads, calls in batchify(sequences, 100))
         res = ((reads[0], {'sequence': seq}) for seqs in consensus for reads, seq in seqs)
-        print("[call] Done.", file=sys.stderr)
+        print("> done.", file=sys.stderr)
     else:
-        print("[call] Starting poa...")
+        print("> start running poa...")
         sequences = ((reads, seqs) for reads, seqs in calls if len(seqs) > 2)
         consensus = process_map(poa, sequences, n_proc=min(max_cpus, 4))
         res = ((reads, {'sequence': seq}) for reads, seqs in consensus for seq in seqs)
-        print("[call] Done.")
+        print("> done.")
 
     if aligner is None: return res
     return align_map(aligner, res)
@@ -381,10 +381,10 @@ def main(args):
                 with open('bonito-read-id.idx', 'w') as f:
                     json.dump(index, f)
 
-        print("Start reading pairs...", file=sys.stderr)
+        print("> start reading pairs...", file=sys.stderr)
         pairs = pd.read_csv(args.pairs, sep=args.sep, names=['read_1', 'read_2'])
         if args.max_reads > 0: pairs = pairs.head(args.max_reads)
-        print("Pairs successfull read!", file=sys.stderr)
+        print("> pairs successfully read!", file=sys.stderr)
 
         pairs['file_1'] = pairs['read_1'].apply(index.get)
         pairs['file_2'] = pairs['read_2'].apply(index.get)
@@ -401,12 +401,12 @@ def main(args):
         print("> no matched pairs found in given directory", file=sys.stderr)
         exit(1)
     else:
-        print(f"Number of pairs detected: {pairs.shape[0]}", file=sys.stderr)
+        print(f"> number of pairs detected: {pairs.shape[0]}", file=sys.stderr)
 
     # https://github.com/clara-parabricks/GenomeWorks/issues/648
     with devnull(): CudaPoaBatch(1000, 1000, 3724032)
 
-    print("Start basecalling...", file=sys.stderr)
+    print("> start basecalling...", file=sys.stderr)
     start_time = time.time()
     basecalls = call(model, args.reads_directory, temp_reads, comp_reads, aligner=aligner, max_cpus=args.max_cpus)
     writer = Writer(tqdm(basecalls, desc="> calling", unit=" reads", leave=False), aligner, duplex=True)
@@ -417,7 +417,7 @@ def main(args):
     duration = perf_counter() - t0
     num_samples = sum(num_samples for read_id, num_samples in writer.log)
     execution_time = time.time() - start_time
-    print(f"Basecalling successfully finished in: {execution_time:.6f} seconds", file=sys.stderr)
+    print(f"> basecalling successfully finished in: {execution_time:.6f} seconds", file=sys.stderr)
 
     print("> duration: %s" % timedelta(seconds=np.round(duration)), file=sys.stderr)
     print("> samples per second %.1E" % (num_samples / duration), file=sys.stderr)
@@ -436,7 +436,6 @@ def argparser():
     parser.add_argument("--sep", default=' ')
     parser.add_argument("--index", default=None)
     parser.add_argument("--save-index", action="store_true", default=False)
-    parser.add_argument("--debug", action="store_true", default=False)
     parser.add_argument("--reference")
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--max-reads", default=0, type=int)
